@@ -16,7 +16,7 @@ package spec
 
 import (
 	"encoding/json"
-	"errors"
+	//"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -29,15 +29,11 @@ import (
 const (
 	defaultVersion = "3.1.2"
 
-	TPRKind        = "cluster"
-	TPRKindPlural  = "clusters"
-	TPRGroup       = "etcd.coreos.com"
-	TPRVersion     = "v1beta1"
-	TPRDescription = "Managed etcd clusters"
-)
-
-var (
-	ErrBackupUnsetRestoreSet = errors.New("spec: backup policy must be set if restore policy is set")
+	TPRKind		= "cloudsqlinstance"
+	TPRKindPlural	= "cloudsqlinstances"
+	TPRGroup	= "gcp.qwil.co"
+	TPRVersion	= "v1beta1"
+	TPRDescription	= "Managed Cloud SQL instances"
 )
 
 func TPRName() string {
@@ -87,18 +83,9 @@ type ClusterSpec struct {
 	// Pod defines the policy to create pod for the etcd container.
 	Pod *PodPolicy `json:"pod,omitempty"`
 
-	// Backup defines the policy to backup data of etcd cluster if not nil.
-	// If backup policy is set but restore policy not, and if a previous backup exists,
-	// this cluster would face conflict and fail to start.
-	Backup *BackupPolicy `json:"backup,omitempty"`
-
 	// Restore defines the policy to restore cluster form existing backup if not nil.
 	// It's not allowed if restore policy is set and backup policy not.
 	Restore *RestorePolicy `json:"restore,omitempty"`
-
-	// SelfHosted determines if the etcd cluster is used for a self-hosted
-	// Kubernetes cluster.
-	SelfHosted *SelfHostedPolicy `json:"selfHosted,omitempty"`
 }
 
 // RestorePolicy defines the policy to restore cluster form existing backup if not nil.
@@ -106,9 +93,6 @@ type RestorePolicy struct {
 	// BackupClusterName is the cluster name of the backup to recover from.
 	BackupClusterName string `json:"backupClusterName"`
 
-	// StorageType specifies the type of storage device to store backup files.
-	// If not set, the default is "PersistentVolume".
-	StorageType BackupStorageType `json:"storageType"`
 }
 
 // PodPolicy defines the policy to create pod for the etcd container.
@@ -127,17 +111,17 @@ type PodPolicy struct {
 	Resources v1.ResourceRequirements `json:"resources"`
 }
 
-func (c *ClusterSpec) Validate() error {
-	if c.Backup == nil && c.Restore != nil {
-		return ErrBackupUnsetRestoreSet
-	}
-	if c.Backup != nil && c.Restore != nil {
-		if c.Backup.StorageType != c.Restore.StorageType {
-			return errors.New("spec: backup and restore storage types are different")
-		}
-	}
-	return nil
-}
+//func (c *ClusterSpec) Validate() error {
+//	if c.Backup == nil && c.Restore != nil {
+//		return ErrBackupUnsetRestoreSet
+//	}
+//	if c.Backup != nil && c.Restore != nil {
+//		if c.Backup.StorageType != c.Restore.StorageType {
+//			return errors.New("spec: backup and restore storage types are different")
+//		}
+//	}
+//	return nil
+//}
 
 // Cleanup cleans up user passed spec, e.g. defaulting, transforming fields.
 // TODO: move this to admission controller
@@ -199,10 +183,10 @@ type ClusterStatus struct {
 	// If the cluster is not upgrading, TargetVersion is empty.
 	TargetVersion string `json:"targetVersion"`
 
-	// BackupServiceStatus is the status of the backup service.
-	// BackupServiceStatus only exists when backup is enabled in the
-	// cluster spec.
-	BackupServiceStatus *BackupServiceStatus `json:"backupServiceStatus,omitempty"`
+	//// BackupServiceStatus is the status of the backup service.
+	//// BackupServiceStatus only exists when backup is enabled in the
+	//// cluster spec.
+	//BackupServiceStatus *BackupServiceStatus `json:"backupServiceStatus,omitempty"`
 }
 
 func (cs ClusterStatus) Copy() ClusterStatus {

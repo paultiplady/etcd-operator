@@ -21,8 +21,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/coreos/etcd-operator/pkg/spec"
-	"github.com/coreos/etcd-operator/pkg/util/retryutil"
+	"github.com/paultiplady/gcp-operator/pkg/spec"
+	"github.com/paultiplady/gcp-operator/pkg/util/retryutil"
 
 	apierrors "k8s.io/client-go/pkg/api/errors"
 	"k8s.io/client-go/rest"
@@ -48,9 +48,9 @@ func GetClusterList(restcli rest.Interface, ns string) (*spec.ClusterList, error
 	return clusters, nil
 }
 
-func WaitEtcdTPRReady(restcli rest.Interface, interval, timeout time.Duration, ns string) error {
+func WaitTPRReady(restcli rest.Interface, interval, timeout time.Duration, ns string) error {
 	return retryutil.Retry(interval, int(timeout/interval), func() (bool, error) {
-		_, err := restcli.Get().RequestURI(listClustersURI(ns)).DoRaw()
+		_, err := restcli.Get().RequestURI(listCloudSqlInstancesURI(ns)).DoRaw()
 		if err != nil {
 			if apierrors.IsNotFound(err) { // not set up yet. wait more.
 				return false, nil
@@ -61,8 +61,8 @@ func WaitEtcdTPRReady(restcli rest.Interface, interval, timeout time.Duration, n
 	})
 }
 
-func listClustersURI(ns string) string {
-	return fmt.Sprintf("/apis/%s/%s/namespaces/%s/clusters", spec.TPRGroup, spec.TPRVersion, ns)
+func listCloudSqlInstancesURI(ns string) string {
+	return fmt.Sprintf("/apis/%s/%s/namespaces/%s/%s", spec.TPRGroup, spec.TPRVersion, ns, spec.TPRKindPlural)
 }
 
 func GetClusterTPRObject(restcli rest.Interface, ns, name string) (*spec.Cluster, error) {

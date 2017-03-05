@@ -1,4 +1,4 @@
-package: github.com/coreos/etcd-operator
+package: github.com/paultiplady/gcp-operator
 import:
 - package: k8s.io/client-go
   version: v2.0.0

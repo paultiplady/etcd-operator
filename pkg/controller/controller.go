@@ -23,11 +23,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/coreos/etcd-operator/pkg/analytics"
-	"github.com/coreos/etcd-operator/pkg/backup/s3/s3config"
-	"github.com/coreos/etcd-operator/pkg/cluster"
-	"github.com/coreos/etcd-operator/pkg/spec"
-	"github.com/coreos/etcd-operator/pkg/util/k8sutil"
+	"github.com/paultiplady/gcp-operator/pkg/cluster"
+	"github.com/paultiplady/gcp-operator/pkg/spec"
+	"github.com/paultiplady/gcp-operator/pkg/util/k8sutil"
 
 	"github.com/Sirupsen/logrus"
 	"k8s.io/client-go/kubernetes"
@@ -71,26 +69,10 @@ type Controller struct {
 }
 
 type Config struct {
-	Namespace      string
-	ServiceAccount string
-	PVProvisioner  string
-	s3config.S3Context
-	KubeCli kubernetes.Interface
-}
-
-func (c *Config) Validate() error {
-	if _, ok := supportedPVProvisioners[c.PVProvisioner]; !ok {
-		return fmt.Errorf(
-			"persistent volume provisioner %s is not supported: options = %v",
-			c.PVProvisioner, supportedPVProvisioners,
-		)
-	}
-	allEmpty := len(c.S3Context.AWSConfig) == 0 && len(c.S3Context.AWSSecret) == 0 && len(c.S3Context.S3Bucket) == 0
-	allSet := len(c.S3Context.AWSConfig) != 0 && len(c.S3Context.AWSSecret) != 0 && len(c.S3Context.S3Bucket) != 0
-	if !(allEmpty || allSet) {
-		return errors.New("AWS/S3 related configs should be all set or all empty")
-	}
-	return nil
+	Namespace	string
+	ServiceAccount	string
+	KubeClient	kubernetes.Interface
+	GoogleClient	*http.Client
 }
 
 func New(cfg Config) *Controller {
@@ -109,15 +91,6 @@ func (c *Controller) Run() error {
 		watchVersion string
 		err          error
 	)
-
-	if len(c.Config.AWSConfig) != 0 {
-		// AWS config/creds should be initialized only once here.
-		// It will be shared and used by potential cluster's S3 backup manager to manage storage on operator side.
-		err := setupS3Env(c.Config.KubeCli, c.Config.S3Context, c.Config.Namespace)
-		if err != nil {
-			return err
-		}
-	}
 
 	for {
 		watchVersion, err = c.initResource()
@@ -172,7 +145,6 @@ func (c *Controller) handleClusterEvent(event *Event) {
 		c.clusters[clus.Metadata.Name] = nc
 		c.clusterRVs[clus.Metadata.Name] = clus.Metadata.ResourceVersion
 
-		analytics.ClusterCreated()
 		clustersCreated.Inc()
 		clustersTotal.Inc()
 
@@ -201,7 +173,7 @@ func (c *Controller) handleClusterEvent(event *Event) {
 
 func (c *Controller) findAllClusters() (string, error) {
 	c.logger.Info("finding existing clusters...")
-	clusterList, err := k8sutil.GetClusterList(c.Config.KubeCli.CoreV1().RESTClient(), c.Config.Namespace)
+	clusterList, err := k8sutil.GetClusterList(c.Config.KubeClient.CoreV1().RESTClient(), c.Config.Namespace)
 	if err != nil {
 		return "", err
 	}
@@ -232,7 +204,7 @@ func (c *Controller) makeClusterConfig() cluster.Config {
 		ServiceAccount: c.Config.ServiceAccount,
 		S3Context:      c.S3Context,
 
-		KubeCli: c.KubeCli,
+		KubeCli: c.KubeClient,
 	}
 }
 
@@ -250,7 +222,7 @@ func (c *Controller) initResource() (string, error) {
 			return "", fmt.Errorf("fail to create TPR: %v", err)
 		}
 	}
-	err = k8sutil.CreateStorageClass(c.KubeCli, c.PVProvisioner)
+	err = k8sutil.CreateStorageClass(c.KubeClient, c.PVProvisioner)
 	if err != nil {
 		if !k8sutil.IsKubernetesResourceAlreadyExistError(err) {
 			return "", fmt.Errorf("fail to create storage class: %v", err)
@@ -269,12 +241,12 @@ func (c *Controller) createTPR() error {
 		},
 		Description: spec.TPRDescription,
 	}
-	_, err := c.KubeCli.ExtensionsV1beta1().ThirdPartyResources().Create(tpr)
+	_, err := c.KubeClient.ExtensionsV1beta1().ThirdPartyResources().Create(tpr)
 	if err != nil {
 		return err
 	}
 
-	return k8sutil.WaitEtcdTPRReady(c.KubeCli.CoreV1().RESTClient(), 3*time.Second, 30*time.Second, c.Namespace)
+	return k8sutil.WaitTPRReady(c.KubeClient.CoreV1().RESTClient(), 3*time.Second, 30*time.Second, c.Namespace)
 }
 
 // watch creates a go routine, and watches the cluster.etcd kind resources from
@@ -323,7 +295,7 @@ func (c *Controller) watch(watchVersion string) (<-chan *Event, <-chan error) {
 					if st.Code == http.StatusGone {
 						// event history is outdated.
 						// if nothing has changed, we can go back to watch again.
-						clusterList, err := k8sutil.GetClusterList(c.Config.KubeCli.CoreV1().RESTClient(), c.Config.Namespace)
+						clusterList, err := k8sutil.GetClusterList(c.Config.KubeClient.CoreV1().RESTClient(), c.Config.Namespace)
 						if err == nil && !c.isClustersCacheStale(clusterList.Items) {
 							watchVersion = clusterList.Metadata.ResourceVersion
 							break

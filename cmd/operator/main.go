@@ -15,46 +15,40 @@
 package main
 
 import (
-	"context"
+	//"context"
 	"flag"
-	"fmt"
+	//"fmt"
 	"os"
 	"os/signal"
 	"runtime"
 	"time"
 
-	"github.com/coreos/etcd-operator/pkg/analytics"
-	"github.com/coreos/etcd-operator/pkg/backup/s3/s3config"
-	"github.com/coreos/etcd-operator/pkg/chaos"
-	"github.com/coreos/etcd-operator/pkg/controller"
-	"github.com/coreos/etcd-operator/pkg/garbagecollection"
-	"github.com/coreos/etcd-operator/pkg/util/k8sutil"
-	"github.com/coreos/etcd-operator/pkg/util/k8sutil/election"
-	"github.com/coreos/etcd-operator/pkg/util/k8sutil/election/resourcelock"
-	"github.com/coreos/etcd-operator/version"
+	"github.com/paultiplady/gcp-operator/pkg/controller"
+	"github.com/paultiplady/gcp-operator/pkg/garbagecollection"
+	"github.com/paultiplady/gcp-operator/pkg/util/k8sutil"
+	"github.com/paultiplady/gcp-operator/pkg/util/k8sutil/election"
+	"github.com/paultiplady/gcp-operator/pkg/util/k8sutil/election/resourcelock"
+	"github.com/paultiplady/gcp-operator/version"
 
 	"github.com/Sirupsen/logrus"
-	"github.com/coreos/etcd-operator/pkg/util/retryutil"
-	"golang.org/x/time/rate"
+	"github.com/paultiplady/gcp-operator/pkg/util/retryutil"
+	//"golang.org/x/time/rate"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/pkg/api"
-	"k8s.io/client-go/pkg/labels"
+	//"k8s.io/client-go/pkg/labels"
 	"k8s.io/client-go/tools/record"
+	"github.com/paultiplady/gcp-operator/pkg/util/googutil"
 )
 
 var (
-	analyticsEnabled bool
-	pvProvisioner    string
+	//analyticsEnabled bool
+	//pvProvisioner    string
 	namespace        string
 	name             string
-	awsSecret        string
-	awsConfig        string
-	s3Bucket         string
+	//awsSecret        string
+	//awsConfig        string
+	//s3Bucket         string
 	gcInterval       time.Duration
-
-	chaosLevel int
-
-	printVersion bool
 )
 
 var (
@@ -64,17 +58,17 @@ var (
 )
 
 func init() {
-	flag.BoolVar(&analyticsEnabled, "analytics", true, "Send analytical event (Cluster Created/Deleted etc.) to Google Analytics")
-
-	flag.StringVar(&pvProvisioner, "pv-provisioner", "kubernetes.io/gce-pd", "persistent volume provisioner type")
-	flag.StringVar(&awsSecret, "backup-aws-secret", "",
-		"The name of the kube secret object that stores the AWS credential file. The file name must be 'credentials'.")
-	flag.StringVar(&awsConfig, "backup-aws-config", "",
-		"The name of the kube configmap object that stores the AWS config file. The file name must be 'config'.")
-	flag.StringVar(&s3Bucket, "backup-s3-bucket", "", "The name of the AWS S3 bucket to store backups in.")
-	// chaos level will be removed once we have a formal tool to inject failures.
-	flag.IntVar(&chaosLevel, "chaos-level", -1, "DO NOT USE IN PRODUCTION - level of chaos injected into the etcd clusters created by the operator.")
-	flag.BoolVar(&printVersion, "version", false, "Show version and quit")
+	//flag.BoolVar(&analyticsEnabled, "analytics", true, "Send analytical event (Cluster Created/Deleted etc.) to Google Analytics")
+	//
+	//flag.StringVar(&pvProvisioner, "pv-provisioner", "kubernetes.io/gce-pd", "persistent volume provisioner type")
+	//flag.StringVar(&awsSecret, "backup-aws-secret", "",
+	//	"The name of the kube secret object that stores the AWS credential file. The file name must be 'credentials'.")
+	//flag.StringVar(&awsConfig, "backup-aws-config", "",
+	//	"The name of the kube configmap object that stores the AWS config file. The file name must be 'config'.")
+	//flag.StringVar(&s3Bucket, "backup-s3-bucket", "", "The name of the AWS S3 bucket to store backups in.")
+	//// chaos level will be removed once we have a formal tool to inject failures.
+	//flag.IntVar(&chaosLevel, "chaos-level", -1, "DO NOT USE IN PRODUCTION - level of chaos injected into the etcd clusters created by the operator.")
+	//flag.BoolVar(&printVersion, "version", false, "Show version and quit")
 	flag.DurationVar(&gcInterval, "gc-interval", 10*time.Minute, "GC interval")
 	flag.Parse()
 
@@ -108,24 +102,18 @@ func main() {
 		os.Exit(1)
 	}()
 
-	if printVersion {
-		fmt.Println("etcd-operator Version:", version.Version)
-		fmt.Println("Git SHA:", version.GitSHA)
-		fmt.Println("Go Version:", runtime.Version())
-		fmt.Printf("Go OS/Arch: %s/%s\n", runtime.GOOS, runtime.GOARCH)
-		os.Exit(0)
-	}
+	//if printVersion {
+	//	fmt.Println("etcd-operator Version:", version.Version)
+	//	fmt.Println("Git SHA:", version.GitSHA)
+	//	fmt.Println("Go Version:", runtime.Version())
+	//	fmt.Printf("Go OS/Arch: %s/%s\n", runtime.GOOS, runtime.GOARCH)
+	//	os.Exit(0)
+	//}
 
 	logrus.Infof("etcd-operator Version: %v", version.Version)
 	logrus.Infof("Git SHA: %s", version.GitSHA)
 	logrus.Infof("Go Version: %s", runtime.Version())
 	logrus.Infof("Go OS/Arch: %s/%s", runtime.GOOS, runtime.GOARCH)
-
-	if analyticsEnabled {
-		analytics.Enable()
-	}
-
-	analytics.OperatorStarted()
 
 	id, err := os.Hostname()
 	if err != nil {
@@ -137,7 +125,7 @@ func main() {
 	rl := &resourcelock.EndpointsLock{
 		EndpointsMeta: api.ObjectMeta{
 			Namespace: namespace,
-			Name:      "etcd-operator",
+			Name:      "gcp-operator",
 		},
 		Client: k8sutil.MustNewKubeClient(),
 		LockConfig: resourcelock.ResourceLockConfig{
@@ -163,13 +151,8 @@ func main() {
 
 func run(stop <-chan struct{}) {
 	cfg := newControllerConfig()
-	if err := cfg.Validate(); err != nil {
-		logrus.Fatalf("invalid operator config: %v", err)
-	}
 
-	go periodicFullGC(cfg.KubeCli, cfg.Namespace, gcInterval)
-
-	startChaos(context.Background(), cfg.KubeCli, cfg.Namespace, chaosLevel)
+	go periodicFullGC(cfg.KubeClient, cfg.Namespace, gcInterval)
 
 	for {
 		c := controller.New(cfg)
@@ -183,9 +166,10 @@ func run(stop <-chan struct{}) {
 }
 
 func newControllerConfig() controller.Config {
-	kubecli := k8sutil.MustNewKubeClient()
+	kubeClient := k8sutil.MustNewKubeClient()
+	googleClient := googutil.NewGoogleClientOrDie()
 
-	serviceAccount, err := getMyPodServiceAccount(kubecli)
+	serviceAccount, err := getMyPodServiceAccount(kubeClient)
 	if err != nil {
 		logrus.Fatalf("fail to get my pod's service account: %v", err)
 	}
@@ -193,22 +177,17 @@ func newControllerConfig() controller.Config {
 	cfg := controller.Config{
 		Namespace:      namespace,
 		ServiceAccount: serviceAccount,
-		PVProvisioner:  pvProvisioner,
-		S3Context: s3config.S3Context{
-			AWSSecret: awsSecret,
-			AWSConfig: awsConfig,
-			S3Bucket:  s3Bucket,
-		},
-		KubeCli: kubecli,
+		KubeClient: kubeClient,
+		GoogleClient: googleClient,
 	}
 
 	return cfg
 }
 
-func getMyPodServiceAccount(kubecli kubernetes.Interface) (string, error) {
+func getMyPodServiceAccount(kubeClient kubernetes.Interface) (string, error) {
 	var sa string
 	err := retryutil.Retry(5*time.Second, 100, func() (bool, error) {
-		pod, err := kubecli.CoreV1().Pods(namespace).Get(name)
+		pod, err := kubeClient.CoreV1().Pods(namespace).Get(name)
 		if err != nil {
 			logrus.Errorf("fail to get operator pod (%s): %v", name, err)
 			return false, nil
@@ -229,42 +208,5 @@ func periodicFullGC(kubecli kubernetes.Interface, ns string, d time.Duration) {
 		if err != nil {
 			logrus.Warningf("failed to cleanup resources: %v", err)
 		}
-	}
-}
-
-func startChaos(ctx context.Context, kubecli kubernetes.Interface, ns string, chaosLevel int) {
-	m := chaos.NewMonkeys(kubecli)
-	ls := labels.SelectorFromSet(map[string]string{"app": "etcd"})
-
-	switch chaosLevel {
-	case 1:
-		logrus.Info("chaos level = 1: randomly kill one etcd pod every 30 seconds at 50%")
-		c := &chaos.CrashConfig{
-			Namespace: ns,
-			Selector:  ls,
-
-			KillRate:        rate.Every(30 * time.Second),
-			KillProbability: 0.5,
-			KillMax:         1,
-		}
-		go func() {
-			time.Sleep(60 * time.Second) // don't start until quorum up
-			m.CrushPods(ctx, c)
-		}()
-
-	case 2:
-		logrus.Info("chaos level = 2: randomly kill at most five etcd pods every 30 seconds at 50%")
-		c := &chaos.CrashConfig{
-			Namespace: ns,
-			Selector:  ls,
-
-			KillRate:        rate.Every(30 * time.Second),
-			KillProbability: 0.5,
-			KillMax:         5,
-		}
-
-		go m.CrushPods(ctx, c)
-
-	default:
 	}
 }
